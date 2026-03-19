@@ -43,9 +43,8 @@ SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 SCRIPT_FILE  = os.path.abspath(__file__)
 ENV_FILE     = os.path.join(SCRIPT_DIR, ".env")
 MEMORY_FILE  = os.path.join(SCRIPT_DIR, ".kimi-memory.json")
-PLUGINS_DIR  = os.path.join(SCRIPT_DIR, "plugins")
 CHANGELOG    = os.path.join(SCRIPT_DIR, ".kimi-changelog.json")
-VERSION      = "1.1.0"
+VERSION      = "1.2.0"
 
 # ── Tool Definitions (OpenAI format) ────────────────────────────────────────
 TOOLS = [
@@ -272,14 +271,14 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "self_improve",
-            "description": "Improve the Kimi CLI itself. You can: read your own source code, add new plugins (tools), edit your core code, view your changelog, or create a backup before changes. This is your self-improvement capability.",
+            "description": "Improve the Kimi CLI itself. You can: read your own source code, edit your core code, view your changelog, or create a backup before changes. This is your self-improvement capability.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "enum": ["read_source", "edit_source", "add_plugin", "list_plugins", "read_plugin", "remove_plugin", "changelog", "backup", "version"],
-                        "description": "Action: read_source (read kimi.py), edit_source (modify kimi.py), add_plugin (create new tool plugin), list_plugins, read_plugin, remove_plugin, changelog (view/add entry), backup (save backup), version (show version)"
+                        "enum": ["read_source", "edit_source", "changelog", "backup", "version"],
+                        "description": "Action: read_source (read kimi.py), edit_source (modify kimi.py), changelog (view/add entry), backup (save backup), version (show version)"
                     },
                     "old_string": {
                         "type": "string",
@@ -288,14 +287,6 @@ TOOLS = [
                     "new_string": {
                         "type": "string",
                         "description": "For edit_source: replacement string"
-                    },
-                    "plugin_name": {
-                        "type": "string",
-                        "description": "For add_plugin/read_plugin/remove_plugin: plugin name (without .py)"
-                    },
-                    "plugin_code": {
-                        "type": "string",
-                        "description": "For add_plugin: full Python code for the plugin"
                     },
                     "changelog_entry": {
                         "type": "string",
@@ -308,69 +299,45 @@ TOOLS = [
     },
 ]
 
-# ── Plugin System ───────────────────────────────────────────────────────────
-
-def load_plugins():
-    """Load all plugins from the plugins/ directory and register their tools."""
-    if not os.path.exists(PLUGINS_DIR):
-        os.makedirs(PLUGINS_DIR, exist_ok=True)
-        return
-
-    for fname in sorted(os.listdir(PLUGINS_DIR)):
-        if not fname.endswith(".py") or fname.startswith("_"):
-            continue
-        plugin_path = os.path.join(PLUGINS_DIR, fname)
-        plugin_name = fname[:-3]
-        try:
-            # Load plugin module
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(f"kimi_plugin_{plugin_name}", plugin_path)
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-
-            # Plugin must define TOOL_DEF (dict) and execute(args) -> str
-            if hasattr(mod, "TOOL_DEF") and hasattr(mod, "execute"):
-                TOOLS.append(mod.TOOL_DEF)
-                PLUGIN_EXECUTORS[plugin_name] = mod.execute
-                print(f"  {DIM}Plugin loaded: {plugin_name}{RESET}")
-        except Exception as e:
-            print(f"  {RED}Plugin error ({plugin_name}): {e}{RESET}")
 
 
-PLUGIN_EXECUTORS = {}  # plugin_name -> execute function
 
-PLUGIN_TEMPLATE = '''"""
-Kimi K2.5 Plugin: {name}
-{description}
+
+FORMATTING_RULES = """
+FORMATTING RULES FOR TERMINAL OUTPUT:
+
+1. NEVER use Markdown tables (syntax: | Column | Column |)
+   - They render poorly in terminal output
+   - Lines break, alignment is lost
+
+2. INSTEAD use ONE of these formats:
+   
+   Option A: Unicode Box Tables (for 2-4 columns)
+   ┌────────────┬────────────┬────────────┐
+   │ Header 1   │ Header 2   │ Header 3   │
+   ├────────────┼────────────┼────────────┤
+   │ Data 1     │ Data 2     │ Data 3     │
+   └────────────┴────────────┴────────────┘
+   
+   Option B: Bullet lists with arrows (for complex data)
+   ► Item: Value
+     └─ Detail: Explanation
+   
+   Option C: Section headers with indentation
+   ─────────────────────────────────────────
+   SECTION NAME
+   ─────────────────────────────────────────
+     • Key: Value
+     • Key: Value
+
+3. CODE BLOCKS: Always specify language
+   ```python
+   def example():
+       pass
+   ```
+
+4. EMPHASIS: Use **bold** or `code` instead of tables for comparisons
 """
-
-# Tool definition (OpenAI function calling format)
-TOOL_DEF = {{
-    "type": "function",
-    "function": {{
-        "name": "{name}",
-        "description": "{description}",
-        "parameters": {{
-            "type": "object",
-            "properties": {{
-                # Add your parameters here
-                "input": {{
-                    "type": "string",
-                    "description": "Input for the tool"
-                }}
-            }},
-            "required": ["input"]
-        }}
-    }}
-}}
-
-
-def execute(args):
-    """Execute the tool. Args is a dict of parameters. Must return a string."""
-    input_val = args.get("input", "")
-    # Your tool logic here
-    return f"Result: {{input_val}}"
-'''
 
 AGENT_SYSTEM_PROMPT = """You are Kimi K2.5 (v{version}), an AI coding assistant running in a terminal CLI. You have full access to the user's local system through tools.
 
@@ -385,18 +352,16 @@ AVAILABLE TOOLS:
 - **web_search**: Search the internet for information
 - **web_fetch**: Fetch and read web page contents
 - **memory**: Save/recall information across sessions
-- **self_improve**: Read/edit your own source code, create plugins, track changes
-{plugin_tools}
+- **self_improve**: Read/edit your own source code, track changes
+
 SELF-IMPROVEMENT:
 You can improve yourself! Use the self_improve tool to:
 1. **Read your source**: Understand your own code before making changes
 2. **Edit your source**: Fix bugs or improve existing functionality in kimi.py
-3. **Add plugins**: Create new tools as plugins in plugins/ (safer than editing core)
-4. **Backup**: Always backup before risky changes
-5. **Changelog**: Log what you changed and why
+3. **Backup**: Always backup before risky changes
+4. **Changelog**: Log what you changed and why
 IMPORTANT: Always read_source first, then backup, then make changes. Test after.
 Your source code is at: {script_file}
-Your plugins are at: {plugins_dir}
 
 RULES:
 - When asked to create files, folders, run commands, or modify code - USE YOUR TOOLS.
@@ -417,16 +382,11 @@ auto_approve = False
 
 def build_system_prompt(extra=None):
     """Build the system prompt with current state."""
-    plugin_tools = ""
-    if PLUGIN_EXECUTORS:
-        plugin_tools = "LOADED PLUGINS:\n" + "\n".join(f"- **{name}**" for name in PLUGIN_EXECUTORS) + "\n\n"
     prompt = AGENT_SYSTEM_PROMPT.format(
         version=VERSION,
         cwd=os.getcwd(),
         platform=sys.platform,
         script_file=SCRIPT_FILE,
-        plugins_dir=PLUGINS_DIR,
-        plugin_tools=plugin_tools,
     )
     if extra:
         prompt += f"\n\nAdditional instructions: {extra}"
@@ -923,7 +883,7 @@ def execute_tool(name, arguments):
         action = args.get("action", "version")
 
         if action == "version":
-            return f"Kimi K2.5 CLI v{VERSION}\nSource: {SCRIPT_FILE}\nPlugins: {PLUGINS_DIR}"
+            return f"Kimi K2.5 CLI v{VERSION}\nSource: {SCRIPT_FILE}"
 
         elif action == "read_source":
             print(f"  {DIM}Reading own source code...{RESET}")
@@ -976,59 +936,6 @@ def execute_tool(name, arguments):
             except Exception as e:
                 return f"Error writing source: {e}"
 
-        elif action == "add_plugin":
-            plugin_name = args.get("plugin_name", "")
-            plugin_code = args.get("plugin_code", "")
-            if not plugin_name or not plugin_code:
-                return "Error: plugin_name and plugin_code required.\n\nPlugin template:\n" + PLUGIN_TEMPLATE.format(name="example", description="Example tool")
-
-            if not ask_permission("self_improve:add_plugin", f"Create plugin: {plugin_name}"):
-                return "User denied."
-
-            os.makedirs(PLUGINS_DIR, exist_ok=True)
-            plugin_path = os.path.join(PLUGINS_DIR, f"{plugin_name}.py")
-            try:
-                with open(plugin_path, "w", encoding="utf-8") as f:
-                    f.write(plugin_code)
-                print(f"  {GREEN}Plugin created: {plugin_path}{RESET}")
-                # Log to changelog
-                add_changelog_entry(f"Added plugin: {plugin_name}")
-                return f"Plugin '{plugin_name}' created at {plugin_path}\nUse /reload to load it."
-            except Exception as e:
-                return f"Error creating plugin: {e}"
-
-        elif action == "list_plugins":
-            os.makedirs(PLUGINS_DIR, exist_ok=True)
-            plugins = [f[:-3] for f in os.listdir(PLUGINS_DIR) if f.endswith(".py") and not f.startswith("_")]
-            if not plugins:
-                return "No plugins installed.\n\nCreate one with self_improve(action='add_plugin', plugin_name='...', plugin_code='...')"
-            output = "Installed plugins:\n" + "\n".join(f"  - {p}" for p in plugins)
-            print(f"  {DIM}{output}{RESET}")
-            return output
-
-        elif action == "read_plugin":
-            plugin_name = args.get("plugin_name", "")
-            plugin_path = os.path.join(PLUGINS_DIR, f"{plugin_name}.py")
-            if not os.path.exists(plugin_path):
-                return f"Plugin '{plugin_name}' not found."
-            try:
-                with open(plugin_path, "r", encoding="utf-8") as f:
-                    return f.read()
-            except Exception as e:
-                return f"Error: {e}"
-
-        elif action == "remove_plugin":
-            plugin_name = args.get("plugin_name", "")
-            plugin_path = os.path.join(PLUGINS_DIR, f"{plugin_name}.py")
-            if not os.path.exists(plugin_path):
-                return f"Plugin '{plugin_name}' not found."
-            if not ask_permission("self_improve:remove_plugin", f"Delete plugin: {plugin_name}"):
-                return "User denied."
-            os.remove(plugin_path)
-            add_changelog_entry(f"Removed plugin: {plugin_name}")
-            print(f"  {DIM}Plugin removed: {plugin_name}{RESET}")
-            return f"Plugin '{plugin_name}' removed. /reload to apply."
-
         elif action == "backup":
             backup_path = SCRIPT_FILE + f".backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             try:
@@ -1050,19 +957,6 @@ def execute_tool(name, arguments):
                 return get_changelog()
 
         return f"Unknown self_improve action: {action}"
-
-    # ── plugin tools ─────────────────────────────────────────────────────
-    elif name in PLUGIN_EXECUTORS:
-        if not ask_permission(f"plugin:{name}", json.dumps(args)[:200]):
-            return "User denied."
-        try:
-            result = PLUGIN_EXECUTORS[name](args)
-            if isinstance(result, str):
-                show_output(result)
-                return result
-            return json.dumps(result)
-        except Exception as e:
-            return f"Plugin error ({name}): {e}"
 
     # ── unknown ──────────────────────────────────────────────────────────
     else:
@@ -1273,8 +1167,6 @@ def agent_loop(messages, thinking=True, max_tokens=16384):
 
 def print_banner():
     """Print the startup banner."""
-    plugin_count = len(PLUGIN_EXECUTORS)
-    plugin_str = f" + {plugin_count} plugins" if plugin_count > 0 else ""
     print(f"""
 {BOLD}{CYAN}╔══════════════════════════════════════════════════════╗
 ║            {YELLOW}Kimi K2.5 Agent CLI  {DIM}v{VERSION}{RESET}{BOLD}{CYAN}             ║
@@ -1282,7 +1174,7 @@ def print_banner():
 ║    {DIM}Self-improving AI coding assistant{RESET}{BOLD}{CYAN}             ║
 ╚══════════════════════════════════════════════════════╝{RESET}
 
-{DIM}Tools: bash | files | edit | grep | glob | web | memory | self-improve{plugin_str}
+{DIM}Tools: bash | files | edit | grep | glob | web | memory | self-improve
 
 Commands:
   /thinking on|off  Toggle thinking/reasoning mode
@@ -1290,7 +1182,6 @@ Commands:
   /clear            Clear conversation history
   /cd <path>        Change working directory
   /memory           List saved memories
-  /plugins          List loaded plugins
   /reload           Reload after self-improvement
   /version          Show version info
   /changelog        Show self-improvement history
@@ -1444,21 +1335,12 @@ def interactive_mode(thinking=True, system_prompt=None, max_tokens=16384):
             elif cmd_lower == "/version":
                 print(f"{DIM}Kimi K2.5 CLI v{VERSION}{RESET}")
                 print(f"{DIM}Source: {SCRIPT_FILE}{RESET}")
-                print(f"{DIM}Plugins: {len(PLUGIN_EXECUTORS)} loaded{RESET}\n")
+                print()
                 continue
 
             elif cmd_lower == "/changelog":
                 cl = get_changelog()
                 print(f"{DIM}{cl}{RESET}\n")
-                continue
-
-            elif cmd_lower == "/plugins":
-                if PLUGIN_EXECUTORS:
-                    for name in PLUGIN_EXECUTORS:
-                        print(f"  {CYAN}{name}{RESET}")
-                else:
-                    print(f"{DIM}No plugins loaded. Kimi can create them with self_improve.{RESET}")
-                print()
                 continue
 
             else:
@@ -1530,9 +1412,6 @@ Examples:
     global auto_approve
     if args.auto:
         auto_approve = True
-
-    # Load plugins
-    load_plugins()
 
     if args.setup:
         setup_mode()

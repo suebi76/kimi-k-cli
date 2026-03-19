@@ -27,3 +27,13 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Local / temporary files
+00-Profil/
+apply_table_update.py
+fix_format.py
+fix_plugin.py
+repair_kimi.py
+test_plugin.py
+update_table_format.py
+social-media-posts.md
