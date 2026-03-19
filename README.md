@@ -2,8 +2,11 @@
 
 A self-improving AI coding assistant for your terminal, powered by [Moonshot AI's Kimi K2.5](https://build.nvidia.com/moonshotai/kimi-k2.5) via NVIDIA NIM API. Kimi-K is a standalone agent that can execute commands, edit code, search the web, and even improve its own source code.
 
-![Python](https://img.shields.io/badge/python-3.8+-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+[![GitHub release](https://img.shields.io/github/v/release/suebi76/kimi-k-cli)](https://github.com/suebi76/kimi-k-cli/releases)
+[![Python](https://img.shields.io/badge/python-3.8+-blue)](https://www.python.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/suebi76/kimi-k-cli)](https://github.com/suebi76/kimi-k-cli/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/suebi76/kimi-k-cli)](https://github.com/suebi76/kimi-k-cli/issues)
 
 ## Features
 
